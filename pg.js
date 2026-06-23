@@ -396,8 +396,28 @@ function sanitize(str) {
   return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
 }
 
+async function waitForGrist(timeout = 5000) {
+  var start = Date.now();
+  while (typeof grist === 'undefined') {
+    if (Date.now() - start > timeout) return false;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return true;
+}
+
 // Initialize on load
 window.addEventListener('DOMContentLoaded', async () => {
+  var isReady = await waitForGrist();
+  if (!isReady) {
+    var container = document.getElementById('gantt-view');
+    if (container) {
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">' + 
+        '<strong>Mode Test :</strong> Ce plugin doit être exécuté à l\'intérieur de Grist pour accéder aux données.<br>' + 
+        'Veuillez configurer ce fichier comme Widget Personnalisé dans Grist.' + 
+        '</div>';
+    }
+    return;
+  }
   await loadData();
 });
 
