@@ -74,11 +74,12 @@ async function loadData() {
   var container = document.getElementById('gantt-view');
   if (!container) return;
 
-  console.log('loadData: Starting to load data from table:', PROJECTS_TABLE);
+  console.log('loadData: Fetching table ' + PROJECTS_TABLE);
 
   try {
     var data = await grist.docApi.fetchTable(PROJECTS_TABLE);
-    console.log('loadData: Data received:', data);
+    console.log('loadData: Data received from Grist', data);
+    
     projects = [];
     if (data && data.id) {
       for (var i = 0; i < data.id.length; i++) {
@@ -92,11 +93,13 @@ async function loadData() {
         });
       }
     }
-    console.log('loadData: Projects parsed:', projects);
+    console.log('loadData: Parsed ' + projects.length + ' projects');
     renderGanttView();
   } catch (e) {
-    console.error('Error loading projects:', e);
-    container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
+    console.error('loadData error:', e);
+    if (container) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
+    }
   }
 }
 
@@ -396,7 +399,11 @@ function renderGanttView() {
 
 function sanitize(str) {
   if (!str) return '';
-  return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+  return String(str)
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"');
 }
 
 async function waitForGrist(timeout = 5000) {
@@ -408,21 +415,25 @@ async function waitForGrist(timeout = 5000) {
   return true;
 }
 
-// Initialize on load
-window.addEventListener('DOMContentLoaded', async () => {
-  var isReady = await waitForGrist();
-  if (!isReady) {
-    var container = document.getElementById('gantt-view');
-    if (container) {
-      container.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">' + 
-        '<strong>Mode Test :</strong> Ce plugin doit être exécuté à l\'intérieur de Grist pour accéder aux données.<br>' + 
-        'Veuillez configurer ce fichier comme Widget Personnalisé dans Grist.' + 
-        '</div>';
+// Initialize using the pattern from widget.js (async IIFE)
+(async function init() {
+  try {
+    var isReady = await waitForGrist();
+    if (!isReady) {
+      var container = document.getElementById('gantt-view');
+      if (container) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">' + 
+          '<strong>Mode Test :</strong> Ce plugin doit être exécuté à l\'intérieur de Grist pour accéder aux données.<br>' + 
+          'Veuillez configurer ce fichier comme Widget Personnalisé dans Grist.' + 
+          '</div>';
+      }
+      return;
     }
-    return;
+    await loadData();
+  } catch (e) {
+    console.error('Initialization error:', e);
   }
-  await loadData();
-});
+})();
 
 // Exposed functions for HTML
 window.setGanttMode = setGanttMode;
