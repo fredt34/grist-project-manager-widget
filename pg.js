@@ -22,7 +22,16 @@ var i18n = {
     ganttTwoYears: '2 Ans',
     ganttViewRange: 'Vue :',
     loading: 'Chargement...',
-    noProjects: 'Aucun projet avec dates trouvé'
+    noProjects: 'Aucun projet avec dates trouvé',
+    noDatesProjects: 'Projets sans dates',
+    statusActive: 'Actif',
+    statusCompleted: 'Terminé',
+    statusArchived: 'Archivé',
+    start: 'Début',
+    end: 'Fin',
+    status: 'Statut',
+    lead: 'Responsable',
+    exportPng: 'Export PNG'
   },
   en: {
     colProjectName: 'Project',
@@ -36,7 +45,16 @@ var i18n = {
     ganttTwoYears: '2 Years',
     ganttViewRange: 'View:',
     loading: 'Loading...',
-    noProjects: 'No projects with dates found'
+    noProjects: 'No projects with dates found',
+    noDatesProjects: 'Projects without dates',
+    statusActive: 'Active',
+    statusCompleted: 'Completed',
+    statusArchived: 'Archived',
+    start: 'Start',
+    end: 'End',
+    status: 'Status',
+    lead: 'Lead',
+    exportPng: 'Export PNG'
   }
 };
 
@@ -70,6 +88,94 @@ function getWeekStart(year, weekNum) {
   return monday;
 }
 
+// =============================================================================
+// #2 — Status-based bar color
+// =============================================================================
+function getBarColor(proj) {
+  var status = (proj.Status || '').toLowerCase();
+  if (status === 'completed' || status === 'done' || status === 'terminé' || status === 'termine') return '#22c55e';
+  if (status === 'archived' || status === 'archivé' || status === 'archive') return '#94a3b8';
+  if (status === 'on_hold' || status === 'on hold' || status === 'en attente') return '#f59e0b';
+  // Use project color for active/default
+  return proj.Color || '#6366f1';
+}
+
+function getStatusLabel(status) {
+  var s = (status || '').toLowerCase();
+  if (s === 'completed' || s === 'done') return t('statusCompleted');
+  if (s === 'archived') return t('statusArchived');
+  if (s === 'active') return t('statusActive');
+  return status || '—';
+}
+
+// =============================================================================
+// #5 — Tooltip popup
+// =============================================================================
+var _tooltipEl = null;
+
+function createTooltip() {
+  if (_tooltipEl) return;
+  _tooltipEl = document.createElement('div');
+  _tooltipEl.id = 'gantt-tooltip';
+  _tooltipEl.className = 'gantt-tooltip';
+  _tooltipEl.style.display = 'none';
+  document.body.appendChild(_tooltipEl);
+  document.addEventListener('mousemove', function(e) {
+    if (_tooltipEl.style.display === 'block') {
+      var x = e.clientX + 14;
+      var y = e.clientY + 14;
+      if (x + 260 > window.innerWidth) x = e.clientX - 270;
+      if (y + 160 > window.innerHeight) y = e.clientY - 160;
+      _tooltipEl.style.left = x + 'px';
+      _tooltipEl.style.top = y + 'px';
+    }
+  });
+}
+
+function showTooltip(proj) {
+  if (!_tooltipEl) createTooltip();
+  var startStr = proj.Start_Date ? formatDate(proj.Start_Date) : '—';
+  var endStr = proj.End_Date ? formatDate(proj.End_Date) : '—';
+  var statusStr = getStatusLabel(proj.Status);
+  var desc = proj.Description ? '<div class="gantt-tooltip-desc">' + sanitize(proj.Description) + '</div>' : '';
+  var lead = proj.Lead ? '<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">' + t('lead') + '</span><span>' + sanitize(proj.Lead) + '</span></div>' : '';
+  var dotColor = getBarColor(proj);
+  _tooltipEl.innerHTML =
+    '<div class="gantt-tooltip-header">' +
+      '<span class="gantt-tooltip-dot" style="background:' + dotColor + ';"></span>' +
+      '<strong>' + sanitize(proj.Name) + '</strong>' +
+    '</div>' +
+    desc +
+    '<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">' + t('start') + '</span><span>' + startStr + '</span></div>' +
+    '<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">' + t('end') + '</span><span>' + endStr + '</span></div>' +
+    '<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">' + t('status') + '</span><span>' + statusStr + '</span></div>' +
+    lead;
+  _tooltipEl.style.display = 'block';
+}
+
+function hideTooltip() {
+  if (_tooltipEl) _tooltipEl.style.display = 'none';
+}
+
+// Attach tooltip events after rendering (using event delegation on the container)
+function attachTooltipEvents(container) {
+  container.addEventListener('mouseover', function(e) {
+    var bar = e.target.closest ? e.target.closest('.gantt-bar') : null;
+    if (bar) {
+      var pid = parseInt(bar.getAttribute('data-pid'));
+      var proj = projects.find(function(p) { return p.id === pid; });
+      if (proj) showTooltip(proj);
+    }
+  });
+  container.addEventListener('mouseout', function(e) {
+    var bar = e.target.closest ? e.target.closest('.gantt-bar') : null;
+    if (bar) hideTooltip();
+  });
+}
+
+// =============================================================================
+// DATA LOADING
+// =============================================================================
 async function loadData() {
   var container = document.getElementById('gantt-view');
   if (!container) return;
@@ -77,7 +183,6 @@ async function loadData() {
   console.log('loadData: Fetching table ' + PROJECTS_TABLE);
 
   try {
-    console.log('loadData: Calling grist.docApi.fetchTable for ' + PROJECTS_TABLE);
     var data = await grist.docApi.fetchTable(PROJECTS_TABLE);
     console.log('loadData: Data received from Grist', data);
 
@@ -87,10 +192,12 @@ async function loadData() {
         projects.push({
           id: data.id[i],
           Name: data.Name ? data.Name[i] : '',
+          Description: data.Description ? data.Description[i] : '',
           Start_Date: data.Start_Date ? data.Start_Date[i] : null,
           End_Date: data.End_Date ? data.End_Date[i] : null,
           Color: data.Color ? data.Color[i] : '#6366f1',
-          Status: data.Status ? data.Status[i] : 'active'
+          Status: data.Status ? data.Status[i] : 'active',
+          Lead: data.Lead ? data.Lead[i] : ''
         });
       }
     }
@@ -99,19 +206,8 @@ async function loadData() {
   } catch (e) {
     console.error('loadData error:', e);
     if (container) {
-      container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Erreur de chargement. Vérifiez que la table PM_Projects existe.</div>';
     }
-  }
-}
-
-function checkForData() {
-  var container = document.getElementById('gantt-view');
-  if (!container) return;
-
-  if (projects.length === 0) {
-    container.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">' + t('noProjects') + '</div>';
-  } else {
-    renderGanttView();
   }
 }
 
@@ -122,14 +218,90 @@ function setGanttMode(mode) {
 
 function setGanttYear(year) {
   ganttYear = parseInt(year);
+  // sync year selector
+  var sel = document.getElementById('year-select');
+  if (sel) sel.value = ganttYear;
   renderGanttView();
 }
 
+// =============================================================================
+// #7 — Navigation helpers
+// =============================================================================
+function navigatePrev() {
+  if (ganttMode === 'days') {
+    ganttMonth--;
+    if (ganttMonth < 0) { ganttMonth = 11; ganttYear--; }
+  } else if (ganttMode === 'weeks') {
+    ganttMonth--;
+    if (ganttMonth < 0) { ganttMonth = 11; ganttYear--; }
+  } else {
+    ganttYear--;
+  }
+  var sel = document.getElementById('year-select');
+  if (sel) sel.value = ganttYear;
+  renderGanttView();
+}
+
+function navigateNext() {
+  if (ganttMode === 'days') {
+    ganttMonth++;
+    if (ganttMonth > 11) { ganttMonth = 0; ganttYear++; }
+  } else if (ganttMode === 'weeks') {
+    ganttMonth++;
+    if (ganttMonth > 11) { ganttMonth = 0; ganttYear++; }
+  } else {
+    ganttYear++;
+  }
+  var sel = document.getElementById('year-select');
+  if (sel) sel.value = ganttYear;
+  renderGanttView();
+}
+
+// =============================================================================
+// #10 — Export to PNG
+// =============================================================================
+function exportToPng() {
+  var ganttContainer = document.querySelector('.gantt-container');
+  if (!ganttContainer) { alert('Rien à exporter.'); return; }
+
+  // Use html2canvas if available
+  if (typeof html2canvas !== 'undefined') {
+    html2canvas(ganttContainer, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(function(canvas) {
+      var link = document.createElement('a');
+      link.download = 'gantt-projets-' + ganttYear + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+    return;
+  }
+
+  // Fallback: load html2canvas dynamically
+  var script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  script.onload = function() {
+    html2canvas(ganttContainer, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(function(canvas) {
+      var link = document.createElement('a');
+      link.download = 'gantt-projets-' + ganttYear + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+  };
+  script.onerror = function() {
+    alert('Impossible de charger html2canvas. Vérifiez votre connexion internet.');
+  };
+  document.head.appendChild(script);
+}
+
+// =============================================================================
+// RENDER
+// =============================================================================
 function renderGanttView() {
   var container = document.getElementById('gantt-view');
   if (!container) return;
 
   var projectsWithDates = projects.filter(function(p) { return p.Start_Date || p.End_Date; });
+  var projectsNoDates = projects.filter(function(p) { return !p.Start_Date && !p.End_Date; });
+
   if (projectsWithDates.length === 0) {
     container.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">' + t('noProjects') + '</div>';
     return;
@@ -141,8 +313,22 @@ function renderGanttView() {
   var monthNamesShort = currentLang === 'fr' ? ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'] : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var monthNames = currentLang === 'fr' ? ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'] : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-  var html = '<div class="gantt-container"><table class="gantt-table">';
+  // Helper: build a gantt bar div
+  function barDiv(proj, widthPx, leftPx) {
+    var barColor = getBarColor(proj);
+    return '<div class="gantt-bar" data-pid="' + proj.id + '" style="left:' + (leftPx || 2) + 'px;width:' + widthPx + 'px;background:' + barColor + ';color:white;">' + sanitize(proj.Name) + '</div>';
+  }
 
+  // Helper: today line absolute div (full cell height)
+  function todayLine(pct) {
+    return '<div class="gantt-today-line" style="left:' + pct + '%;"></div>';
+  }
+
+  var html = '<div class="gantt-scroll-wrapper"><div class="gantt-container"><table class="gantt-table">';
+
+  // -------------------------------------------------------------------------
+  // WEEKS MODE
+  // -------------------------------------------------------------------------
   if (ganttMode === 'weeks') {
     var startWeek = getISOWeek(new Date(ganttYear, ganttMonth, 1));
     var numWeeks = 34;
@@ -156,10 +342,22 @@ function renderGanttView() {
       weeks.push({ num: wn, year: yr, start: ws, end: we });
     }
 
+    // #8 today column index
+    var todayWeekIdx = -1;
+    var todayWeekPct = 0;
+    for (var wi = 0; wi < weeks.length; wi++) {
+      if (today >= weeks[wi].start && today <= weeks[wi].end) {
+        todayWeekIdx = wi;
+        var dayInWeek = (today - weeks[wi].start) / 86400000;
+        todayWeekPct = Math.round(dayInWeek / 7 * 100);
+        break;
+      }
+    }
+
     html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t('colProjectName') + '</th>';
     for (var wi = 0; wi < weeks.length; wi++) {
       var wk = weeks[wi];
-      var isCurrentWeek = getISOWeek(today) === wk.num && today.getFullYear() === wk.year;
+      var isCurrentWeek = (wi === todayWeekIdx);
       html += '<th style="min-width:80px;' + (isCurrentWeek ? 'background:#fef2f2;color:#ef4444;' : '') + '">';
       html += '<div style="font-size:11px;font-weight:800;">S' + wk.num + '</div>';
       html += '<div style="font-size:9px;font-weight:400;color:#94a3b8;">' + monthNamesShort[wk.start.getMonth()] + ' ' + String(wk.start.getFullYear()).substring(2) + '</div>';
@@ -169,14 +367,13 @@ function renderGanttView() {
 
     for (var pi = 0; pi < projectsWithDates.length; pi++) {
       var proj = projectsWithDates[pi];
-      var barColor = proj.Color || '#6366f1';
       html += '<tr>';
       html += '<td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
 
       var pStart = proj.Start_Date ? new Date(proj.Start_Date * 1000) : null;
       var pEnd = proj.End_Date ? new Date(proj.End_Date * 1000) : null;
-      if (!pStart && pEnd) pStart = pEnd;
-      if (!pEnd && pStart) pEnd = pStart;
+      if (!pStart && pEnd) pStart = new Date(pEnd);
+      if (!pEnd && pStart) pEnd = new Date(pStart);
       if (pStart) pStart.setHours(0, 0, 0, 0);
       if (pEnd) pEnd.setHours(23, 59, 59, 999);
 
@@ -190,31 +387,51 @@ function renderGanttView() {
       }
 
       for (var wi = 0; wi < weeks.length; wi++) {
-        var isCurrentWeek = getISOWeek(today) === weeks[wi].num && today.getFullYear() === weeks[wi].year;
+        var isCurrentWeek = (wi === todayWeekIdx);
         html += '<td class="gantt-cell" style="position:relative;' + (isCurrentWeek ? 'background:#fef2f2;' : '') + '">';
+        // #8 today line
+        if (wi === todayWeekIdx) html += todayLine(todayWeekPct);
         if (wi === barStartIdx) {
           var spanCols = barEndIdx - barStartIdx + 1;
-          var widthPx = spanCols * 80;
-          html += '<div class="gantt-bar" style="left:2px;width:' + widthPx + 'px;background:' + barColor + ';color:white;" title="' + sanitize(proj.Name) + '">' + sanitize(proj.Name) + '</div>';
+          html += barDiv(proj, spanCols * 80);
         }
         html += '</td>';
       }
       html += '</tr>';
     }
     html += '</tbody></table>';
-    
+
     var viewStartMonth = monthNames[weeks[0].start.getMonth()];
     var viewEndMonth = monthNames[weeks[weeks.length - 1].start.getMonth()];
-    html += '<div class="gantt-footer"><span>🌟 ' + projectsWithDates.length + ' ' + (currentLang === 'fr' ? 'projets' : 'projects') + '</span><span>' + t('ganttViewRange') + ' ' + viewStartMonth + ' - ' + viewEndMonth + ' ' + ganttYear + '</span></div></div>';
+    html += buildFooter(projectsWithDates.length, projectsNoDates, viewStartMonth + ' – ' + viewEndMonth + ' ' + ganttYear);
+    html += '</div></div>';
     container.innerHTML = html;
+    attachTooltipEvents(container);
     return;
   }
 
+  // -------------------------------------------------------------------------
+  // YEAR / TWOYEARS MODE
+  // -------------------------------------------------------------------------
   if (ganttMode === 'year' || ganttMode === 'twoyears') {
     var numYears = ganttMode === 'twoyears' ? 2 : 1;
     var totalMonths = numYears * 12;
     var startYr = ganttYear;
     var colWidth = ganttMode === 'twoyears' ? 50 : 70;
+
+    // #8 today column index
+    var todayMonthIdx = -1;
+    var todayMonthPct = 0;
+    for (var ym = 0; ym < totalMonths; ym++) {
+      var yr = startYr + Math.floor(ym / 12);
+      var mo = ym % 12;
+      if (yr === today.getFullYear() && mo === today.getMonth()) {
+        todayMonthIdx = ym;
+        var daysInMonth = new Date(yr, mo + 1, 0).getDate();
+        todayMonthPct = Math.round((today.getDate() - 1) / daysInMonth * 100);
+        break;
+      }
+    }
 
     html += '<thead>';
     if (ganttMode === 'twoyears') {
@@ -228,15 +445,14 @@ function renderGanttView() {
     for (var ym = 0; ym < totalMonths; ym++) {
       var yr = startYr + Math.floor(ym / 12);
       var mo = ym % 12;
-      var isCurrent = (yr === today.getFullYear() && mo === today.getMonth());
+      var isCurrent = (ym === todayMonthIdx);
       html += '<th style="min-width:' + colWidth + 'px;' + (isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '">' + monthNamesShort[mo].substring(0, 3) + '</th>';
     }
     html += '</tr></thead><tbody>';
 
     for (var pi = 0; pi < projectsWithDates.length; pi++) {
       var proj = projectsWithDates[pi];
-      var barColor = proj.Color || '#6366f1';
-      html += '<tr>' + '<td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
+      html += '<tr><td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
 
       var pStart = proj.Start_Date ? new Date(proj.Start_Date * 1000) : null;
       var pEnd = proj.End_Date ? new Date(proj.End_Date * 1000) : null;
@@ -258,30 +474,33 @@ function renderGanttView() {
       }
 
       for (var ym = 0; ym < totalMonths; ym++) {
-        var yr2 = startYr + Math.floor(ym / 12);
-        var mo2 = ym % 12;
-        var isCurrent2 = (yr2 === today.getFullYear() && mo2 === today.getMonth());
+        var isCurrent2 = (ym === todayMonthIdx);
         html += '<td class="gantt-cell" style="position:relative;min-width:' + colWidth + 'px;' + (isCurrent2 ? 'background:#fef2f2;' : '') + '">';
+        // #8 today line
+        if (ym === todayMonthIdx) html += todayLine(todayMonthPct);
         if (ym === yBarStart) {
           var yBarW = (yBarEnd - yBarStart + 1) * colWidth;
-          html += '<div class="gantt-bar" style="left:2px;width:' + yBarW + 'px;background:' + barColor + ';color:white;" title="' + sanitize(proj.Name) + '">' + sanitize(proj.Name) + '</div>';
+          html += barDiv(proj, yBarW);
         }
         html += '</td>';
       }
       html += '</tr>';
     }
     html += '</tbody></table>';
-    html += '<div class="gantt-footer"><span>🌟 ' + projectsWithDates.length + ' ' + (currentLang === 'fr' ? 'projets' : 'projects') + '</span><span>' + t('ganttViewRange') + ' ' + (ganttMode === 'twoyears' ? startYr + ' - ' + (startYr + 1) : startYr) + '</span></div></div>';
+    html += buildFooter(projectsWithDates.length, projectsNoDates, ganttMode === 'twoyears' ? startYr + ' – ' + (startYr + 1) : String(startYr));
+    html += '</div></div>';
     container.innerHTML = html;
+    attachTooltipEvents(container);
     return;
   }
 
+  // -------------------------------------------------------------------------
+  // MONTHS MODE
+  // -------------------------------------------------------------------------
   if (ganttMode === 'months') {
-    var startDate = new Date(ganttYear, 0, 1);
-    var endDate = new Date(ganttYear, 11, 31);
     var todayMonth = today.getMonth();
     var todayYear = today.getFullYear();
-    var todayDayPct = (todayYear === ganttYear && todayMonth >= 0 && todayMonth < 12) ? Math.round((today.getDate() - 1) / new Date(ganttYear, todayMonth + 1, 0).getDate() * 100) : -1;
+    var todayDayPct = (todayYear === ganttYear) ? Math.round((today.getDate() - 1) / new Date(ganttYear, todayMonth + 1, 0).getDate() * 100) : -1;
 
     html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t('colProjectName') + '</th>';
     for (var m = 0; m < 12; m++) {
@@ -292,8 +511,7 @@ function renderGanttView() {
 
     for (var pi = 0; pi < projectsWithDates.length; pi++) {
       var proj = projectsWithDates[pi];
-      var barColor = proj.Color || '#6366f1';
-      html += '<tr>' + '<td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
+      html += '<tr><td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
 
       var mTStart = proj.Start_Date ? new Date(proj.Start_Date * 1000) : null;
       var mTEnd = proj.End_Date ? new Date(proj.End_Date * 1000) : null;
@@ -315,23 +533,26 @@ function renderGanttView() {
       for (var m = 0; m < 12; m++) {
         var isTodayMonth = (ganttYear === todayYear && m === todayMonth);
         html += '<td class="gantt-cell" style="position:relative;min-width:80px;">';
-        if (isTodayMonth && todayDayPct >= 0) {
-          html += '<div style="position:absolute;top:0;bottom:0;left:' + todayDayPct + '%;width:2px;background:#ef4444;z-index:1;pointer-events:none;"></div>';
-        }
+        if (isTodayMonth && todayDayPct >= 0) html += todayLine(todayDayPct);
         if (m === mBarStartIdx) {
           var mBarWidth = (mBarEndIdx - mBarStartIdx + 1) * 80;
-          html += '<div class="gantt-bar" style="left:2px;width:' + mBarWidth + 'px;background:' + barColor + ';color:white;" title="' + sanitize(proj.Name) + '">' + sanitize(proj.Name) + '</div>';
+          html += barDiv(proj, mBarWidth);
         }
         html += '</td>';
       }
       html += '</tr>';
     }
     html += '</tbody></table>';
-    html += '<div class="gantt-footer"><span>🌟 ' + projectsWithDates.length + ' ' + (currentLang === 'fr' ? 'projets' : 'projects') + '</span><span>' + t('ganttViewRange') + ' ' + monthNames[0] + ' - ' + monthNames[11] + ' ' + ganttYear + '</span></div></div>';
+    html += buildFooter(projectsWithDates.length, projectsNoDates, monthNames[0] + ' – ' + monthNames[11] + ' ' + ganttYear);
+    html += '</div></div>';
     container.innerHTML = html;
+    attachTooltipEvents(container);
     return;
   }
 
+  // -------------------------------------------------------------------------
+  // DAYS MODE
+  // -------------------------------------------------------------------------
   if (ganttMode === 'days') {
     var startDate = new Date(ganttYear, ganttMonth - 1, 1);
     var endDate = new Date(ganttYear, ganttMonth + 2, 0);
@@ -367,8 +588,7 @@ function renderGanttView() {
 
     for (var pi = 0; pi < projectsWithDates.length; pi++) {
       var proj = projectsWithDates[pi];
-      var barColor = proj.Color || '#6366f1';
-      html += '<tr>' + '<td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
+      html += '<tr><td class="gantt-task-label">' + sanitize(proj.Name) + '</td>';
 
       var pStart = proj.Start_Date ? new Date(proj.Start_Date * 1000) : null;
       var pEnd = proj.End_Date ? new Date(proj.End_Date * 1000) : null;
@@ -394,21 +614,49 @@ function renderGanttView() {
         var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
         var cellClass = (isToday ? 'today-col' : '') + (isWeekend ? ' weekend-col' : '');
         html += '<td class="gantt-cell ' + cellClass + '" style="position:relative;">';
+        if (isToday) html += todayLine(50);
         if (di === barStartIdx) {
           var spanDays = barEndIdx - barStartIdx + 1;
-          var widthPx = spanDays * 36;
-          html += '<div class="gantt-bar" style="left:2px;width:' + widthPx + 'px;background:' + barColor + ';color:white;" title="' + sanitize(proj.Name) + '">' + sanitize(proj.Name) + '</div>';
+          html += barDiv(proj, spanDays * 36);
         }
         html += '</td>';
       }
       html += '</tr>';
     }
     html += '</tbody></table>';
-    html += '<div class="gantt-footer"><span>🌟 ' + projectsWithDates.length + ' ' + (currentLang === 'fr' ? 'projets' : 'projects') + '</span><span>' + t('ganttViewRange') + ' ' + monthNames[ganttMonth] + ' ' + ganttYear + '</span></div></div>';
+    html += buildFooter(projectsWithDates.length, projectsNoDates, monthNames[ganttMonth] + ' ' + ganttYear);
+    html += '</div></div>';
     container.innerHTML = html;
+    attachTooltipEvents(container);
   }
 }
 
+// =============================================================================
+// #6 — Footer with "no dates" projects list
+// =============================================================================
+function buildFooter(countWithDates, projectsNoDates, rangeLabel) {
+  var html = '<div class="gantt-footer">';
+  html += '<span>🌟 ' + countWithDates + ' ' + (currentLang === 'fr' ? 'projets' : 'projects') + '</span>';
+  html += '<span>' + t('ganttViewRange') + ' ' + rangeLabel + '</span>';
+  html += '</div>';
+
+  if (projectsNoDates && projectsNoDates.length > 0) {
+    html += '<div class="gantt-no-dates-section">';
+    html += '<div class="gantt-no-dates-title">⚠️ ' + t('noDatesProjects') + ' (' + projectsNoDates.length + ')</div>';
+    html += '<div class="gantt-no-dates-list">';
+    for (var i = 0; i < projectsNoDates.length; i++) {
+      var p = projectsNoDates[i];
+      var dotColor = getBarColor(p);
+      html += '<span class="gantt-no-dates-item"><span class="gantt-no-dates-dot" style="background:' + dotColor + ';"></span>' + sanitize(p.Name) + '</span>';
+    }
+    html += '</div></div>';
+  }
+  return html;
+}
+
+// =============================================================================
+// UTILS
+// =============================================================================
 function sanitize(str) {
   if (!str) return '';
   return String(str)
@@ -423,7 +671,9 @@ function isInsideGrist() {
   catch (e) { return true; }
 }
 
-// Initialize using the pattern from widget.js (async IIFE)
+// =============================================================================
+// INIT
+// =============================================================================
 if (!isInsideGrist()) {
   var container = document.getElementById('gantt-view');
   if (container) {
@@ -437,6 +687,17 @@ if (!isInsideGrist()) {
     try {
       await grist.ready({ requiredAccess: 'full' });
       await loadData();
+
+      // #1 — Live data refresh
+      if (typeof grist.onRecords === 'function') {
+        var _liveReloadTimer = null;
+        grist.onRecords(function() {
+          if (_liveReloadTimer) clearTimeout(_liveReloadTimer);
+          _liveReloadTimer = setTimeout(function() {
+            loadData();
+          }, 500);
+        });
+      }
     } catch (e) {
       console.error('Initialization error:', e);
       var container = document.getElementById('gantt-view');
@@ -447,6 +708,9 @@ if (!isInsideGrist()) {
   })();
 }
 
-// Exposed functions for HTML
+// Exposed functions for HTML controls
 window.setGanttMode = setGanttMode;
 window.setGanttYear = setGanttYear;
+window.navigatePrev = navigatePrev;
+window.navigateNext = navigateNext;
+window.exportToPng = exportToPng;
