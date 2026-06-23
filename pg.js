@@ -71,6 +71,17 @@ function getWeekStart(year, weekNum) {
 }
 
 async function loadData() {
+  var container = document.getElementById('gantt-view');
+  if (!container) return;
+
+  if (typeof grist === 'undefined') {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">' + 
+      '<strong>Mode Test :</strong> Ce plugin doit être exécuté à l\'intérieur de Grist pour accéder aux données.<br>' + 
+      'Veuillez configurer ce fichier comme Widget Personnalisé dans Grist.' + 
+      '</div>';
+    return;
+  }
+
   try {
     var data = await grist.docApi.fetchTable(PROJECTS_TABLE);
     projects = [];
@@ -89,7 +100,7 @@ async function loadData() {
     renderGanttView();
   } catch (e) {
     console.error('Error loading projects:', e);
-    document.getElementById('gantt-view').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
   }
 }
 

@@ -3,24 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Diagramme de Gantt</title>
+    <title>Diagramme de Gantt des Projets</title>
     <link rel="stylesheet" href="pg.css">
 </head>
-<body>
-    <div class="gantt-container">
-        <div class="gantt-chart"></div>
-        <div class="gantt-controls">
-            <button class="btn" id="zoom-in">+</button>
-            <button class="btn" id="zoom-out">-</button>
-            <select id="view-selector">
-                <option value="week">Semaine</option>
-                <option value="month">Mois</option>
-                <option value="year">Année</option>
-            </select>
-            <input type="date" id="start-date" />
-            <input type="date" id="end-date" />
+<body style="margin: 0; padding: 0; background-color: #f8fafc;">
+    <div class="pg-app-container">
+        <header class="pg-header" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 2rem; background: white; border-bottom: 1px solid #e2e8f0; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+            <h1 class="pg-title" style="margin: 0; font-size: 1.25rem; font-weight: 600; color: #1e293b;">Diagramme de Gantt des Projets</h1>
+            <div class="pg-controls" style="display: flex; gap: 1rem; align-items: center;">
+                <div class="control-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <label for="year-select" style="font-size: 0.875rem; color: #64748b;">Année :</label>
+                    <select id="year-select" onchange="setGanttYear(this.value)" style="padding: 0.25rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.875rem;"></select>
+                </div>
+                <div class="control-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <label for="mode-select" style="font-size: 0.875rem; color: #64748b;">Vue :</label>
+                    <select id="mode-select" onchange="setGanttMode(this.value)" style="padding: 0.25rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.875rem;">
+                        <option value="days">Jours</option>
+                        <option value="weeks">Semaines</option>
+                        <option value="months">Mois</option>
+                        <option value="year">Année</option>
+                        <option value="twoyears">2 Ans</option>
+                    </select>
+                </div>
+                <button class="btn-today" onclick="resetToToday()" style="padding: 0.25rem 0.75rem; background: #6366f1; color: white; border: none; border-radius: 0.375rem; font-size: 0.875rem; cursor: pointer;">Aujourd'hui</button>
+            </div>
+        </header>
+
+        <div id="gantt-view" style="padding: 20px;">
+            <div class="loading-placeholder" style="text-align: center; padding: 40px; color: #64748b;">Chargement des données Grist...</div>
         </div>
     </div>
+
     <script src="pg.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const yearSelect = document.getElementById('year-select');
+            if (yearSelect) {
+                const currentYear = new Date().getFullYear();
+                for (let y = currentYear - 2; y <= currentYear + 5; y++) {
+                    const opt = document.createElement('option');
+                    opt.value = y;
+                    opt.textContent = y;
+                    if (y === currentYear) opt.selected = true;
+                    yearSelect.appendChild(opt);
+                }
+            }
+        });
+
+        function resetToToday() {
+            const now = new Date();
+            if (typeof setGanttYear === 'function') setGanttYear(now.getFullYear());
+            if (typeof setGanttMode === 'function') setGanttMode('days');
+        }
+    </script>
 </body>
 </html>
