@@ -412,41 +412,40 @@ function renderGanttView() {
 function sanitize(str) {
   if (!str) return '';
   return String(str)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-async function waitForGrist(timeout = 5000) {
-  var start = Date.now();
-  while (typeof grist === 'undefined') {
-    if (Date.now() - start > timeout) return false;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  return true;
+function isInsideGrist() {
+  try { return window.frameElement !== null || window !== window.parent; }
+  catch (e) { return true; }
 }
 
 // Initialize using the pattern from widget.js (async IIFE)
-(async function init() {
-  try {
-    var isReady = await waitForGrist();
-    if (!isReady) {
+if (!isInsideGrist()) {
+  var container = document.getElementById('gantt-view');
+  if (container) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">' +
+      '<strong>Mode Test :</strong> Ce plugin doit être exécuté à l\'intérieur de Grist pour accéder aux données.<br>' +
+      'Veuillez configurer ce fichier comme Widget Personnalisé dans Grist.' +
+      '</div>';
+  }
+} else {
+  (async function init() {
+    try {
+      await grist.ready({ requiredAccess: 'full' });
+      await loadData();
+    } catch (e) {
+      console.error('Initialization error:', e);
       var container = document.getElementById('gantt-view');
       if (container) {
-        container.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">' +
-          '<strong>Mode Test :</strong> Ce plugin doit être exécuté à l\'intérieur de Grist pour accéder aux données.<br>' +
-          'Veuillez configurer ce fichier comme Widget Personnalisé dans Grist.' +
-          '</div>';
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Erreur d\'initialisation : ' + e.message + '</div>';
       }
-      return;
     }
-    await loadData();
-    checkForData();
-  } catch (e) {
-    console.error('Initialization error:', e);
-  }
-})();
+  })();
+}
 
 // Exposed functions for HTML
 window.setGanttMode = setGanttMode;
