@@ -3,7 +3,7 @@
 // =============================================================================
 
 var projects = [];
-var ganttMode = 'days'; // 'days' | 'months' | 'weeks' | 'year' | 'twoyears'
+var ganttMode = 'months'; // 'days' | 'months' | 'weeks' | 'year' | 'twoyears'
 var ganttYear = new Date().getFullYear();
 var ganttMonth = new Date().getMonth();
 var PROJECTS_TABLE = 'PM_Projects';
@@ -74,9 +74,11 @@ async function loadData() {
   var container = document.getElementById('gantt-view');
   if (!container) return;
 
+  console.log('loadData: Starting to load data from table:', PROJECTS_TABLE);
 
   try {
     var data = await grist.docApi.fetchTable(PROJECTS_TABLE);
+    console.log('loadData: Data received:', data);
     projects = [];
     if (data && data.id) {
       for (var i = 0; i < data.id.length; i++) {
@@ -90,6 +92,7 @@ async function loadData() {
         });
       }
     }
+    console.log('loadData: Projects parsed:', projects);
     renderGanttView();
   } catch (e) {
     console.error('Error loading projects:', e);
