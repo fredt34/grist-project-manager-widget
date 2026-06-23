@@ -77,6 +77,7 @@ async function loadData() {
   console.log('loadData: Fetching table ' + PROJECTS_TABLE);
 
   try {
+    console.log('loadData: Calling grist.docApi.fetchTable for ' + PROJECTS_TABLE);
     var data = await grist.docApi.fetchTable(PROJECTS_TABLE);
     console.log('loadData: Data received from Grist', data);
     
