@@ -77,27 +77,34 @@ async function loadData() {
   console.log('loadData: Fetching table ' + PROJECTS_TABLE);
 
   try {
-    console.log('loadData: Calling grist.docApi.fetchTable for ' + PROJECTS_TABLE);
-    var data = await grist.docApi.fetchTable(PROJECTS_TABLE);
-    console.log('loadData: Data received from Grist', data);
-    
-    projects = [];
-    if (data && data.id) {
-      for (var i = 0; i < data.id.length; i++) {
-        projects.push({
-          id: data.id[i],
-          Name: data.Name ? data.Name[i] : '',
-          Start_Date: data.Start_Date ? data.Start_Date[i] : null,
-          End_Date: data.End_Date ? data.End_Date[i] : null,
-          Color: data.Color ? data.Color[i] : '#6366f1',
-          Status: data.Status ? data.Status[i] : 'active'
-        });
+    // Using .then() instead of await for the initial fetch to avoid potential async/await hangs
+    // seen in some Grist plugin environments.
+    grist.docApi.fetchTable(PROJECTS_TABLE).then(function(data) {
+      console.log('loadData: Data received from Grist', data);
+      
+      projects = [];
+      if (data && data.id) {
+        for (var i = 0; i < data.id.length; i++) {
+          projects.push({
+            id: data.id[i],
+            Name: data.Name ? data.Name[i] : '',
+            Start_Date: data.Start_Date ? data.Start_Date[i] : null,
+            End_Date: data.End_Date ? data.End_Date[i] : null,
+            Color: data.Color ? data.Color[i] : '#6366f1',
+            Status: data.Status ? data.Status[i] : 'active'
+          });
+        }
       }
-    }
-    console.log('loadData: Parsed ' + projects.length + ' projects');
-    renderGanttView();
+      console.log('loadData: Parsed ' + projects.length + ' projects');
+      renderGanttView();
+    }).catch(function(e) {
+      console.error('loadData fetch error:', e);
+      if (container) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
+      }
+    });
   } catch (e) {
-    console.error('loadData error:', e);
+    console.error('loadData try-catch error:', e);
     if (container) {
       container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading projects. Please ensure the PM_Projects table exists.</div>';
     }
@@ -419,6 +426,9 @@ async function waitForGrist(timeout = 5000) {
 // Initialize using the pattern from widget.js (async IIFE)
 (async function init() {
   try {
+    // Small delay to ensure Grist environment is completely settled
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
     var isReady = await waitForGrist();
     if (!isReady) {
       var container = document.getElementById('gantt-view');
@@ -430,6 +440,13 @@ async function waitForGrist(timeout = 5000) {
       }
       return;
     }
+
+    // Fix "Day mode" start: force the dropdown to 'months' immediately
+    var modeSelect = document.getElementById('mode-select');
+    if (modeSelect) {
+      modeSelect.value = 'months';
+    }
+
     await loadData();
   } catch (e) {
     console.error('Initialization error:', e);
