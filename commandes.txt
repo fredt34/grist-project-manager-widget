@@ -1,0 +1,1 @@
+rsync -av --delete --exclude .git --exclude node_modules ./ perso:/var/www/temp-ens/gantt/
